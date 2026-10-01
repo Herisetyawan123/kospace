@@ -11,12 +11,14 @@ import 'profile_screen.dart';
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
+    this.userId,
     this.displayName,
     this.email,
     this.onSignOut,
     this.onUpdateDisplayName,
   });
 
+  final String? userId;
   final String? displayName;
   final String? email;
   final Future<void> Function()? onSignOut;
@@ -74,6 +76,7 @@ class _AppShellState extends State<AppShell> {
         onOpenListing: _openListing,
       ),
       ProfileScreen(
+        userId: widget.userId,
         displayName: widget.displayName,
         email: widget.email,
         onSignOut: widget.onSignOut,

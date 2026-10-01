@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:kos/screens/app_shell.dart';
 import 'package:kos/screens/login_screen.dart';
@@ -52,6 +53,7 @@ void main() {
   testWidgets('profile menu items open and perform their actions', (
     WidgetTester tester,
   ) async {
+    SharedPreferences.setMockInitialValues({});
     var signedOut = false;
     await tester.pumpWidget(
       MaterialApp(
@@ -68,10 +70,46 @@ void main() {
 
     await tester.tap(find.text('Data diri'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Nadia Putri');
-    await tester.tap(find.text('Simpan'));
+    expect(find.text('Edit profil'), findsOneWidget);
+    expect(find.text('Preferensi mencari kos'), findsOneWidget);
+    expect(find.text('Tanggal lahir'), findsOneWidget);
+    expect(find.text('Gender'), findsOneWidget);
+    expect(find.text('Area kos yang dicari'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('profile_name')),
+      'Nadia Putri',
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile_area')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('profile_area')),
+      'Rungkut',
+    );
+    await tester.scrollUntilVisible(
+      find.text('Simpan perubahan'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Simpan perubahan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit profil'), findsNothing);
     expect(find.text('Nadia Putri'), findsOneWidget);
+
+    await tester.tap(find.text('Data diri'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('profile_name')))
+          .controller
+          ?.text,
+      'Nadia Putri',
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Kos tersimpan'));
     await tester.pump();
@@ -79,32 +117,24 @@ void main() {
 
     await tester.tap(find.text('Profil').last);
     await tester.pump();
-    await tester.tap(find.text('Notifikasi'));
-    await tester.pumpAndSettle();
-    expect(find.text('Notifikasi aplikasi'), findsOneWidget);
-    await tester.tap(find.text('Selesai'));
-    await tester.pumpAndSettle();
+    expect(find.text('Notifikasi'), findsNothing);
 
     await tester.ensureVisible(find.text('Pusat bantuan'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Pusat bantuan'));
     await tester.pumpAndSettle();
+    expect(find.text('Pusat bantuan'), findsOneWidget);
     expect(find.text('Bagaimana cara menyimpan kos?'), findsOneWidget);
-    await tester.tap(find.text('Bagaimana cara menyimpan kos?'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Ketuk ikon hati'), findsOneWidget);
-    await tester.ensureVisible(find.text('Tutup'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Tutup'));
-    await tester.pumpAndSettle();
+    await tester.pageBack();
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('Tentang Betah'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tentang Betah'));
     await tester.pumpAndSettle();
+    expect(find.text('Cari kos, rasa rumah.'), findsOneWidget);
     expect(find.text('1.0.0'), findsOneWidget);
-    await tester.tap(find.text('Close'));
+    await tester.pageBack();
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('Keluar dari akun'));

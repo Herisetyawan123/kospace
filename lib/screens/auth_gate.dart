@@ -40,6 +40,7 @@ class _AuthGateState extends State<AuthGate> {
             if (user != null) {
               final name = user.displayName?.trim();
               return AppShell(
+                userId: user.uid,
                 displayName: name == null || name.isEmpty ? null : name,
                 email: user.email,
                 onSignOut: () => FirebaseAuth.instance.signOut(),

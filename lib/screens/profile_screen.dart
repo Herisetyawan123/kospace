@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/seeker_profile.dart';
 import '../theme/betah_colors.dart';
+import 'about_screen.dart';
+import 'edit_profile_screen.dart';
+import 'help_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
+    this.userId,
     this.displayName,
     this.email,
     this.onSignOut,
@@ -12,6 +18,7 @@ class ProfileScreen extends StatefulWidget {
     this.onOpenFavorites,
   });
 
+  final String? userId;
   final String? displayName;
   final String? email;
   final Future<void> Function()? onSignOut;
@@ -23,7 +30,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late String _name;
+  late SeekerProfile _profile;
+  late final String _storageKey;
 
   String get _fallbackName =>
       widget.email?.split('@').first ?? 'Damar Ardiansyah';
@@ -31,29 +39,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _name = widget.displayName?.trim().isNotEmpty == true
-        ? widget.displayName!.trim()
-        : _fallbackName;
+    _storageKey = 'betah_seeker_profile_${widget.userId ?? 'demo'}';
+    _profile = SeekerProfile(
+      name: widget.displayName?.trim().isNotEmpty == true
+          ? widget.displayName!.trim()
+          : _fallbackName,
+    );
+    _loadProfile();
   }
 
-  @override
-  void didUpdateWidget(covariant ProfileScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.displayName != widget.displayName &&
-        widget.displayName?.trim().isNotEmpty == true) {
-      _name = widget.displayName!.trim();
+  Future<void> _loadProfile() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = preferences.getString(_storageKey);
+      if (saved == null) return;
+      final profile = SeekerProfile.fromJson(saved);
+      if (!mounted) return;
+      setState(() {
+        _profile = SeekerProfile(
+          name: widget.displayName?.trim().isNotEmpty == true
+              ? widget.displayName!.trim()
+              : profile.name,
+          phone: profile.phone,
+          address: profile.address,
+          birthDate: profile.birthDate,
+          gender: profile.gender,
+          preferredArea: profile.preferredArea,
+          monthlyBudget: profile.monthlyBudget,
+          moveInDate: profile.moveInDate,
+          occupation: profile.occupation,
+        );
+      });
+    } catch (_) {
+      // Use account defaults if saved local profile data cannot be read.
     }
+  }
+
+  Future<void> _saveProfile(SeekerProfile profile) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_storageKey, profile.toJson());
+    if (profile.name != widget.displayName) {
+      try {
+        await widget.onUpdateDisplayName?.call(profile.name);
+      } catch (_) {
+        if (mounted) {
+          _showMessage(
+            'Preferensi tersimpan, tetapi nama akun gagal diperbarui.',
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _editProfile() async {
+    final updatedProfile = await Navigator.of(context).push<SeekerProfile>(
+      MaterialPageRoute<SeekerProfile>(
+        builder: (context) => EditProfileScreen(
+          initialProfile: _profile,
+          email: widget.email ?? '',
+          onSave: _saveProfile,
+        ),
+      ),
+    );
+    if (updatedProfile == null || !mounted) return;
+    setState(() => _profile = updatedProfile);
   }
 
   @override
   Widget build(BuildContext context) {
     final emailLabel = widget.email ?? 'damar.ardi@email.com';
-    final initials = _name
+    final initials = _profile.name
         .split(RegExp(r'[ ._-]+'))
         .where((part) => part.isNotEmpty)
         .take(2)
         .map((part) => part[0].toUpperCase())
         .join();
+    final details = [
+      if (_profile.preferredArea.isNotEmpty) _profile.preferredArea,
+      if (_profile.monthlyBudget.isNotEmpty)
+        'Budget Rp${_profile.monthlyBudget}/bln',
+    ];
 
     return SafeArea(
       child: ListView(
@@ -94,7 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _name,
+                            _profile.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -113,6 +178,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               fontSize: 12,
                             ),
                           ),
+                          if (details.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              details.join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFD9E8E1),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -131,40 +208,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _ProfileMenuTile(
             icon: Icons.person_outline_rounded,
             title: 'Data diri',
-            subtitle: 'Nama dan email akun',
+            subtitle: 'Profil dan preferensi kos',
             onTap: _editProfile,
           ),
           _ProfileMenuTile(
             icon: Icons.favorite_border_rounded,
             title: 'Kos tersimpan',
             subtitle: 'Kelola daftar favoritmu',
-            onTap:
-                widget.onOpenFavorites ??
-                () => _showMessage('Daftar kos tersimpan belum tersedia.'),
+            onTap: widget.onOpenFavorites ?? () {},
           ),
           const SizedBox(height: 16),
-          const _ProfileSectionLabel('LAINNYA'),
-          _ProfileMenuTile(
-            icon: Icons.notifications_none_rounded,
-            title: 'Notifikasi',
-            subtitle: 'Atur kabar terbaru tentang kos',
-            onTap: _showNotificationSettings,
-          ),
+          const _ProfileSectionLabel('INFORMASI'),
           _ProfileMenuTile(
             icon: Icons.help_outline_rounded,
             title: 'Pusat bantuan',
-            subtitle: 'Temukan jawaban dan panduan',
-            onTap: _showHelp,
+            subtitle: 'Panduan menggunakan Betah',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (context) => const HelpScreen()),
+            ),
           ),
           _ProfileMenuTile(
             icon: Icons.info_outline_rounded,
             title: 'Tentang Betah',
             subtitle: 'Versi aplikasi 1.0.0',
-            onTap: () => showAboutDialog(
-              context: context,
-              applicationName: 'Betah',
-              applicationVersion: '1.0.0',
-              applicationLegalese: 'Cari kos, rasa rumah.',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const AboutScreen(),
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -179,135 +249,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Future<void> _editProfile() async {
-    final updatedName = await showDialog<String>(
-      context: context,
-      builder: (context) => _EditNameDialog(initialName: _name),
-    );
-    final trimmedName = updatedName?.trim();
-    if (trimmedName == null || trimmedName.isEmpty) return;
-
-    try {
-      await widget.onUpdateDisplayName?.call(trimmedName);
-      if (!mounted) return;
-      setState(() => _name = trimmedName);
-      _showMessage('Nama profil berhasil diperbarui.');
-    } catch (_) {
-      if (mounted) _showMessage('Nama profil gagal diperbarui. Coba lagi.');
-    }
-  }
-
-  void _showNotificationSettings() {
-    var pushEnabled = true;
-    var emailEnabled = false;
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const ListTile(
-                  title: Text(
-                    'Notifikasi',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  subtitle: Text('Pilih kabar yang ingin kamu terima.'),
-                ),
-                SwitchListTile(
-                  title: const Text('Notifikasi aplikasi'),
-                  value: pushEnabled,
-                  onChanged: (value) =>
-                      setSheetState(() => pushEnabled = value),
-                ),
-                SwitchListTile(
-                  title: const Text('Info melalui email'),
-                  value: emailEnabled,
-                  onChanged: (value) =>
-                      setSheetState(() => emailEnabled = value),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Selesai'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showHelp() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
-              child: Text(
-                'Pusat bantuan',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-            ),
-            const ExpansionTile(
-              title: Text('Bagaimana cara menyimpan kos?'),
-              children: [
-                ListTile(
-                  title: Text(
-                    'Ketuk ikon hati pada kartu kos atau halaman detail. Kos akan muncul di tab Favorit.',
-                  ),
-                ),
-              ],
-            ),
-            const ExpansionTile(
-              title: Text('Bagaimana cara mencari berdasarkan area?'),
-              children: [
-                ListTile(
-                  title: Text(
-                    'Gunakan kolom pencarian di Beranda, lalu masukkan nama area di Surabaya.',
-                  ),
-                ),
-              ],
-            ),
-            const ExpansionTile(
-              title: Text('Bagaimana jika lupa kata sandi?'),
-              children: [
-                ListTile(
-                  title: Text(
-                    'Pilih “Lupa kata sandi?” di halaman Login untuk menerima tautan reset melalui email.',
-                  ),
-                ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Tutup'),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -331,7 +272,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (shouldSignOut != true) return;
-
     try {
       await widget.onSignOut?.call();
       if (widget.onSignOut == null && mounted) {
@@ -346,54 +286,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _EditNameDialog extends StatefulWidget {
-  const _EditNameDialog({required this.initialName});
-
-  final String initialName;
-
-  @override
-  State<_EditNameDialog> createState() => _EditNameDialogState();
-}
-
-class _EditNameDialogState extends State<_EditNameDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Data diri'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Nama lengkap'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Batal'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('Simpan'),
-        ),
-      ],
-    );
   }
 }
 
